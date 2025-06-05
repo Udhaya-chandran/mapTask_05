@@ -183,7 +183,7 @@ class LocationTrackerScreen extends StatelessWidget {
           }
           
           if (state is LocationLoaded) {
-            print('Rendering map with ${state.pathPoints.length} path points'); // Debug print
+            // print('Rendering map with ${state.pathPoints.length} path points'); // Debug print
             return GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: LatLng(state.latitude, state.longitude),
@@ -208,7 +208,7 @@ class LocationTrackerScreen extends StatelessWidget {
                 ),
               },
               onMapCreated: (GoogleMapController controller) {
-                print('Map created with ${state.pathPoints.length} path points'); // Debug print
+                // print('Map created with ${state.pathPoints.length} path points'); // Debug print
               },
             );
           }
