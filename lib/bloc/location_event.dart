@@ -20,3 +20,15 @@ class ViewTrackingHistory extends LocationEvent {
 
   ViewTrackingHistory(this.tracking);
 }
+
+class ResetToInitial extends LocationEvent {}
+
+class DeleteTrackingSession extends LocationEvent {
+  final String sessionId;
+  DeleteTrackingSession(this.sessionId);
+}
+
+class RestoreTrackingSession extends LocationEvent {
+  final LocationModel tracking;
+  RestoreTrackingSession(this.tracking);
+}

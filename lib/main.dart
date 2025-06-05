@@ -8,11 +8,17 @@ import 'bloc/location_state.dart';
 import 'models/location_model.dart';
 import 'repositories/location_repository.dart';
 import 'services/location_service.dart';
+import 'screens/map_view_screen.dart';
+import 'adapters/lat_lng_adapter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
+  
+  // Register adapters
   Hive.registerAdapter(LocationModelAdapter());
+  Hive.registerAdapter(LatLngAdapter());
+  
   await Hive.openBox<LocationModel>('locations');
 
   runApp(const MyApp());
@@ -52,91 +58,119 @@ class LocationTrackerScreen extends StatelessWidget {
       body: BlocBuilder<LocationBloc, LocationState>(
         builder: (context, state) {
           if (state is LocationInitial) {
-            return BlocBuilder<LocationBloc, LocationState>(
-              builder: (context, state) {
-                final locationHistory = context.read<LocationBloc>().getLocationHistory();
-                if (locationHistory.isEmpty) {
-                  return const Center(child: Text('Press start to begin tracking'));
-                }
-                return Column(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text(
-                        'Tracking History',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+            final locationHistory = context.read<LocationBloc>().getLocationHistory();
+            if (locationHistory.isEmpty) {
+              return const Center(child: Text('Press start to begin tracking'));
+            }
+            return Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'Tracking History',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: locationHistory.length,
-                        itemBuilder: (context, index) {
-                          final tracking = locationHistory[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                child: Text('${index + 1}'),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: locationHistory.length,
+                    itemBuilder: (context, index) {
+                      final tracking = locationHistory[index];
+                      return Dismissible(
+                        key: Key(tracking.sessionId),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          color: Colors.red,
+                          child: const Icon(
+                            Icons.delete,
+                            color: Colors.white,
+                          ),
+                        ),
+                        onDismissed: (direction) {
+                          // Delete the tracking session
+                          context.read<LocationBloc>().add(DeleteTrackingSession(tracking.sessionId));
+                          // Show undo snackbar
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Tracking session deleted'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () {
+                                  context.read<LocationBloc>().add(RestoreTrackingSession(tracking));
+                                },
                               ),
-                              title: Text(
-                                'Tracking Session ${index + 1}',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              subtitle: Text(
-                                'Date: ${tracking.timestamp.toString().split('.')[0]}',
-                              ),
-                              trailing: const Icon(Icons.arrow_forward_ios),
-                              onTap: () {
-                                // Show tracking details
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext dialogContext) {
-                                    return Dialog(
-                                      child: Container(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Text(
-                                              'Tracking Details',
-                                              style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Text('Start Time: ${tracking.timestamp.toString().split('.')[0]}'),
-                                            const SizedBox(height: 8),
-                                            Text('Path Points: ${tracking.pathPoints.length}'),
-                                            const SizedBox(height: 16),
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                Navigator.of(dialogContext).pop();
-                                                // Show the tracking path on map
-                                                context.read<LocationBloc>().add(
-                                                  ViewTrackingHistory(tracking),
-                                                );
-                                              },
-                                              child: const Text('View on Map'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
                             ),
                           );
                         },
-                      ),
-                    ),
-                  ],
-                );
-              },
+                        child: Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Text('${index + 1}'),
+                            ),
+                            title: Text(
+                              'Tracking Session ${index + 1}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text(
+                              'Date: ${tracking.timestamp.toString().split('.')[0]}',
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios),
+                            onTap: () {
+                              // Show tracking details
+                              showDialog(
+                                context: context,
+                                builder: (BuildContext dialogContext) {
+                                  return Dialog(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text(
+                                            'Tracking Details',
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text('Start Time: ${tracking.timestamp.toString().split('.')[0]}'),
+                                          const SizedBox(height: 8),
+                                          Text('Path Points: ${tracking.pathPoints.length}'),
+                                          const SizedBox(height: 16),
+                                          ElevatedButton(
+                                            onPressed: () {
+                                              Navigator.of(dialogContext).pop();
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (context) => MapViewScreen(
+                                                    tracking: tracking,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: const Text('View on Map'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             );
           }
           
@@ -149,12 +183,15 @@ class LocationTrackerScreen extends StatelessWidget {
           }
           
           if (state is LocationLoaded) {
+            print('Rendering map with ${state.pathPoints.length} path points'); // Debug print
             return GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: LatLng(state.latitude, state.longitude),
                 zoom: 15,
-              ), 
+              ),
               zoomControlsEnabled: false,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
               markers: {
                 Marker(
                   markerId: const MarkerId('current_location'),
@@ -167,7 +204,11 @@ class LocationTrackerScreen extends StatelessWidget {
                   points: state.pathPoints,
                   color: Colors.blue,
                   width: 5,
+                  patterns: [PatternItem.dash(10), PatternItem.gap(10)],
                 ),
+              },
+              onMapCreated: (GoogleMapController controller) {
+                print('Map created with ${state.pathPoints.length} path points'); // Debug print
               },
             );
           }
@@ -202,7 +243,7 @@ class LocationTrackerScreen extends StatelessWidget {
                               onPressed: () {
                                 Navigator.of(dialogContext).pop(); // Close dialog
                                 context.read<LocationBloc>().add(StopTracking());
-                                // Show success message
+                                // Show success message and navigate back
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Tracking stopped'),
@@ -210,6 +251,8 @@ class LocationTrackerScreen extends StatelessWidget {
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );
+                                // Navigate back to list screen
+                                context.read<LocationBloc>().add(ResetToInitial());
                               },
                               child: const Text('Stop'),
                             ),

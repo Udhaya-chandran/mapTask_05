@@ -12,6 +12,8 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
   final LocationService _locationService;
   final LocationRepository _locationRepository;
   StreamSubscription<Position>? _locationSubscription;
+  String? _currentSessionId;
+  List<LatLng> _currentPathPoints = [];
 
   LocationBloc(this._locationService, this._locationRepository)
       : super(LocationInitial()) {
@@ -19,6 +21,9 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
     on<StopTracking>(_onStopTracking);
     on<UpdateLocation>(_onUpdateLocation);
     on<ViewTrackingHistory>(_onViewTrackingHistory);
+    on<ResetToInitial>(_onResetToInitial);
+    on<DeleteTrackingSession>(_onDeleteTrackingSession);
+    on<RestoreTrackingSession>(_onRestoreTrackingSession);
   }
 
   Future<void> _onStartTracking(
@@ -32,6 +37,24 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
         return;
       }
 
+      // Initialize new tracking session
+      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      _currentPathPoints = [];
+
+      // Get initial position
+      final initialPosition = await _locationService.getCurrentLocation();
+      _currentPathPoints.add(LatLng(initialPosition.latitude, initialPosition.longitude));
+
+      // Save initial location
+      final initialLocation = LocationModel(
+        latitude: initialPosition.latitude,
+        longitude: initialPosition.longitude,
+        timestamp: DateTime.now(),
+        sessionId: _currentSessionId!,
+        pathPoints: _currentPathPoints,
+      );
+      await _locationRepository.saveLocation(initialLocation);
+
       _locationSubscription = _locationService
           .getLocationStream()
           .listen((Position position) {
@@ -41,7 +64,12 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
         ));
       });
 
-      emit(LocationLoading());
+      emit(LocationLoaded(
+        latitude: initialPosition.latitude,
+        longitude: initialPosition.longitude,
+        locationHistory: _locationRepository.getLocationHistory(),
+        pathPoints: _currentPathPoints,
+      ));
     } catch (e) {
       emit(LocationError(e.toString()));
     }
@@ -51,8 +79,30 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
     StopTracking event,
     Emitter<LocationState> emit,
   ) async {
-    await _locationSubscription?.cancel();
-    _locationSubscription = null;
+    try {
+      await _locationSubscription?.cancel();
+      _locationSubscription = null;
+      
+      // Save final location with complete path
+      if (_currentSessionId != null) {
+        final currentLocation = await _locationService.getCurrentLocation();
+        final finalLocation = LocationModel(
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          timestamp: DateTime.now(),
+          sessionId: _currentSessionId!,
+          pathPoints: _currentPathPoints,
+        );
+        await _locationRepository.saveLocation(finalLocation);
+      }
+
+      _currentSessionId = null;
+      _currentPathPoints = [];
+      
+      emit(LocationInitial());
+    } catch (e) {
+      emit(LocationError(e.toString()));
+    }
   }
 
   Future<void> _onUpdateLocation(
@@ -60,25 +110,27 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
     Emitter<LocationState> emit,
   ) async {
     try {
+      if (_currentSessionId == null) return;
+
+      // Add new point to current path
+      _currentPathPoints.add(LatLng(event.latitude, event.longitude));
+
+      // Save location with updated path
       final location = LocationModel(
         latitude: event.latitude,
         longitude: event.longitude,
         timestamp: DateTime.now(),
+        sessionId: _currentSessionId!,
+        pathPoints: _currentPathPoints,
       );
 
       await _locationRepository.saveLocation(location);
-      final history = _locationRepository.getLocationHistory();
-      
-      // Convert location history to path points
-      final pathPoints = history.map((loc) => 
-        LatLng(loc.latitude, loc.longitude)
-      ).toList();
 
       emit(LocationLoaded(
         latitude: event.latitude,
         longitude: event.longitude,
-        locationHistory: history,
-        pathPoints: pathPoints,
+        locationHistory: _locationRepository.getLocationHistory(),
+        pathPoints: _currentPathPoints,
       ));
     } catch (e) {
       emit(LocationError(e.toString()));
@@ -106,6 +158,26 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
     } catch (e) {
       emit(LocationError(e.toString()));
     }
+  }
+
+  void _onResetToInitial(ResetToInitial event, Emitter<LocationState> emit) {
+    emit(LocationInitial());
+  }
+
+  Future<void> _onDeleteTrackingSession(
+    DeleteTrackingSession event,
+    Emitter<LocationState> emit,
+  ) async {
+    await _locationRepository.deleteTrackingSession(event.sessionId);
+    emit(LocationInitial());
+  }
+
+  Future<void> _onRestoreTrackingSession(
+    RestoreTrackingSession event,
+    Emitter<LocationState> emit,
+  ) async {
+    await _locationRepository.restoreTrackingSession(event.tracking);
+    emit(LocationInitial());
   }
 
   @override

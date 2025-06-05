@@ -15,12 +15,16 @@ class LocationModel extends HiveObject {
   final DateTime timestamp;
 
   @HiveField(3)
-  final List<LatLng> pathPoints;
+  List<LatLng> pathPoints;
+
+  @HiveField(4)
+  final String sessionId;
 
   LocationModel({
     required this.latitude,
     required this.longitude,
     required this.timestamp,
-    this.pathPoints = const [],
-  });
+    required this.sessionId,
+    List<LatLng>? pathPoints,
+  }) : pathPoints = pathPoints ?? [];
 }

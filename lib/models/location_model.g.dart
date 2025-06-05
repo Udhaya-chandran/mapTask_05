@@ -20,19 +20,25 @@ class LocationModelAdapter extends TypeAdapter<LocationModel> {
       latitude: fields[0] as double,
       longitude: fields[1] as double,
       timestamp: fields[2] as DateTime,
+      pathPoints: (fields[3] as List?)?.cast<LatLng>() ?? [],
+      sessionId: fields[4] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
     );
   }
 
   @override
   void write(BinaryWriter writer, LocationModel obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.latitude)
       ..writeByte(1)
       ..write(obj.longitude)
       ..writeByte(2)
-      ..write(obj.timestamp);
+      ..write(obj.timestamp)
+      ..writeByte(3)
+      ..write(obj.pathPoints)
+      ..writeByte(4)
+      ..write(obj.sessionId);
   }
 
   @override
